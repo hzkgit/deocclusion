@@ -21,6 +21,7 @@ def combine_bbox(bboxes):
 
 def mask_to_bbox(mask):
     mask = (mask == 1)
+    # ~表示取反,True=>False,False=>True
     if np.all(~mask):
         return [0, 0, 0, 0]
     assert len(mask.shape) == 2

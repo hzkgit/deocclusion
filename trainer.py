@@ -56,7 +56,7 @@ class Trainer(object):
                     'global_logger',
                     '{}/logs/log_train.txt'.format(args.exp_path))
 
-        # create model
+        # create model algo就是PartialCompletionMask模型
         self.model = models.__dict__[args.model['algo']](
             args.model, load_pretrain=args.load_pretrain, dist_model=True)
 

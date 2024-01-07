@@ -39,15 +39,19 @@ def read_COCOA(ann, h, w):
     if 'visible_mask' in ann.keys():
         rle = [ann['visible_mask']]
     else:
+        # 将RLE格式的掩模数据转换回原始格式
         rles = maskUtils.frPyObjects([ann['segmentation']], h, w)
         rle = maskUtils.merge(rles)
     modal = maskUtils.decode(rle).squeeze()
+    # np.all()用于检查数组中的所有元素是否都为True
+    # modal!=1:modal中每个元素是否都不等于1
     if np.all(modal != 1):
         # if the object if fully occluded by others,
         # use amodal bbox as an approximated location,
         # note that it will produce random amodal results.
         amodal = maskUtils.decode(maskUtils.merge(
             maskUtils.frPyObjects([ann['segmentation']], h, w)))
+        # 计算掩码的边界框
         bbox = utils.mask_to_bbox(amodal)
     else:
         bbox = utils.mask_to_bbox(modal)
