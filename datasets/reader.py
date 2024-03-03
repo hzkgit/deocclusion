@@ -156,7 +156,7 @@ class KINSLVISDataset(object):
     def get_instance(self, idx, with_gt=False):
         ann = self.annot_info[idx]
         # img
-        imgid = ann['image_id']
+        imgid = ann['image_id']  # 获取annotation中的image_id
         w, h = self.size_dict[imgid]
         image_fn = self.imgfn_dict[imgid]
         # instance

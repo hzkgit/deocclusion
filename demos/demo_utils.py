@@ -202,14 +202,15 @@ def polygon_drawing(masks, selidx, color_source, bbox, thickness=2):
     if bbox is not None:
         l,u,r,b = bbox
         masks = masks[:, u:b, l:r]
+    # mask[0]:即猫砂盆的掩码，mask[1]:即地毯的掩码...
     for i,am in enumerate(masks[selidx,...]):
-        pts_list = reader.mask_to_polygon(am)
+        pts_list = reader.mask_to_polygon(am) # 得到一个多边形[x1,y1,x2,y2,...]
         for pts in pts_list:
-            pts = np.array(pts).reshape(-1, 2)
-            polygons.append(Polygon(pts))
-            colors.append(color_source[i])
-    pface = PatchCollection(polygons, facecolor=colors, linewidths=0, alpha=0.4)
-    pedge = PatchCollection(polygons, facecolor='none', edgecolors=colors, linewidths=thickness)
+            pts = np.array(pts).reshape(-1, 2)  # 将数组转为二维数组
+            polygons.append(Polygon(pts)) # Polygon绘制多边形并加入到polygons数组
+            colors.append(color_source[i]) # 定义颜色并加入到colors数组
+    pface = PatchCollection(polygons, facecolor=colors, linewidths=0, alpha=0.4)  # 根据多边形的点集绘制多边形并填充颜色
+    pedge = PatchCollection(polygons, facecolor='none', edgecolors=colors, linewidths=thickness)  # 绘制多边形的边并填充颜色
     return pface, pedge
 
 def image_resize(image, short_size=None, long_size=None):

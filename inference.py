@@ -28,25 +28,25 @@ def get_eraser(inst_ind, idx, bbox, input_size):
     return torch.from_numpy(eraser.astype(np.float32)).unsqueeze(0)
 
 def net_forward(model, image, inmodal_patch, eraser, use_rgb, th):
-    if use_rgb:
+    if use_rgb:  # 不使用
         image = torch.from_numpy(image.transpose((2,0,1)).astype(np.float32)).unsqueeze(0)
         image = image.cuda()
-    inmodal_patch = torch.from_numpy(inmodal_patch.astype(np.float32)).unsqueeze(0).unsqueeze(0).cuda()
+    inmodal_patch = torch.from_numpy(inmodal_patch.astype(np.float32)).unsqueeze(0).unsqueeze(0).cuda()  # 将inmodal_patch数据先转浮点，然后再转为Pytorch张量，2个unsqueeze:将（256,256）生维度为四维张量（1，1,256,256）
     with torch.no_grad():
         if eraser is not None:
-            eraser = torch.from_numpy(eraser.astype(np.float32)).unsqueeze(0).unsqueeze(0).cuda()
+            eraser = torch.from_numpy(eraser.astype(np.float32)).unsqueeze(0).unsqueeze(0).cuda()  # 将eraser数据先转浮点，然后再转为Pytorch张量，2个unsqueeze:将（256,256）生维度为四维张量（1，1,256,256）
             if use_rgb:
                 output = model.model(torch.cat([inmodal_patch, eraser], dim=1), image)
             else:
-                output = model.model(torch.cat([inmodal_patch, eraser], dim=1))
+                output = model.model(torch.cat([inmodal_patch, eraser], dim=1))  # 拼接inmodal_patch和eraser后输入到网络，估计补全掩码,输出（1,2,256,256）
         else:
             if use_rgb:
                 output = model.model(torch.cat([inmodal_patch], dim=1), image)
             else:
                 output = model.model(inmodal_patch)
-        output = nn.functional.softmax(output, dim=1)
-    output.detach_()
-    return (output[0,1,:,:] > th).cpu().numpy().astype(np.uint8)
+        output = nn.functional.softmax(output, dim=1)  # softmax，归一化（和为1）
+    output.detach_()  # 从张量 output 中提取其梯度信息并将其断开，从而防止该张量在后续的计算中更新。
+    return (output[0,1,:,:] > th).cpu().numpy().astype(np.uint8)  # 选取0,1通道的信息判断每个值是否大于th（0.5），如果满足则返回True（后转为1），否则返回False（后转为0）
 
 def net_forward_ordernet(model, image, inmodal1, inmodal2, use_rgb):
     if use_rgb:
@@ -95,13 +95,13 @@ def infer_amodal_hull(inmodal, bboxes, order_matrix, order_grounded=True):
     amodal = []
     num = inmodal.shape[0]
     for i in range(num):
-        m = inmodal[i]
+        m = inmodal[i]  # 得到当前的掩码
         hull = convex_hull.convex_hull_image(m).astype(np.uint8)
         if order_grounded:
             assert order_matrix is not None
-            ancestors = get_ancestors(order_matrix, i)
-            eraser = (inmodal[ancestors, ...].sum(axis=0) > 0).astype(np.uint8) # union
-            hull[(eraser == 0) & (m == 0)] = 0
+            ancestors = get_ancestors(order_matrix, i)  # 获取遮挡了当前对象的全部索引，如5对应0,2,3,4,
+            eraser = (inmodal[ancestors, ...].sum(axis=0) > 0).astype(np.uint8) # 选中0,2,3,4的掩码,然后将他们对应元素相加（4个掩码放在一起），然后每个元素判断是否大于0，将True转为1，False转为0 union
+            hull[(eraser == 0) & (m == 0)] = 0  # 将eraser中为0的并且原来掩码为0的凸包位置置为0（即凸包中掩码没有交集的部分置为0）
         amodal.append(hull)
     return amodal
 
@@ -111,14 +111,14 @@ def infer_order_hull(inmodal):
     occ_value_matrix = np.zeros((num, num), dtype=np.float32)
     for i in range(num):
         for j in range(i + 1, num):
-            if bordering(inmodal[i], inmodal[j]):
+            if bordering(inmodal[i], inmodal[j]):  # 如过存在遮挡关系则进入，如mask[0]和mask[5]
                 amodal_i = convex_hull.convex_hull_image(inmodal[i])
                 amodal_j = convex_hull.convex_hull_image(inmodal[j])
-                occ_value_matrix[i, j] = ((amodal_i > inmodal[i]) & (inmodal[j] == 1)).sum()
+                occ_value_matrix[i, j] = ((amodal_i > inmodal[i]) & (inmodal[j] == 1)).sum()  # 计算5被0挡住的部分
                 occ_value_matrix[j, i] = ((amodal_j > inmodal[j]) & (inmodal[i] == 1)).sum()
-    order_matrix[occ_value_matrix > occ_value_matrix.transpose()] = -1
+    order_matrix[occ_value_matrix > occ_value_matrix.transpose()] = -1  # a>b.transpose():数组a中所有元素大于对应数组b转置中的所有元素则返回True
     order_matrix[occ_value_matrix < occ_value_matrix.transpose()] = 1
-    order_matrix[(occ_value_matrix == 0) & (occ_value_matrix == 0).transpose()] = 0
+    order_matrix[(occ_value_matrix == 0) & (occ_value_matrix == 0).transpose()] = 0  # 对于数组occ_value_matrix中的所有元素，如果它们在行和列方向上均等于0，则返回True
     return order_matrix
 
 def infer_order_area(inmodal, above='larger'):
@@ -269,8 +269,8 @@ def bordering(a, b):
     dilate_kernel = np.array([[0, 1, 0],
                               [1, 1, 1],
                               [0, 1, 0]], dtype=np.uint8)
-    a_dilate = cv2.dilate(a.astype(np.uint8), dilate_kernel, iterations=1)
-    return np.any((a_dilate == 1) & b)
+    a_dilate = cv2.dilate(a.astype(np.uint8), dilate_kernel, iterations=1)  # cv2.dilate：用于图像的膨胀操作
+    return np.any((a_dilate == 1) & b)  # 对于数组a_dilate中的所有元素，如果它们与数组b中的对应元素相等且均为1，则返回True；否则返回False。
 
 def bbox_in(box1, box2):
     l1, u1, r1, b1 = box1[0], box1[1], box1[0] + box1[2], box1[1] + box1[3]
@@ -290,6 +290,7 @@ def fullcovering(mask1, mask2, box1, box2):
     else:
         return 0
 
+# 输入模态掩码和非模态掩码从而推断遮挡顺序
 def infer_gt_order(inmodal, amodal):
     #inmodal = inmodal.numpy()
     #amodal = amodal.numpy()
@@ -339,7 +340,7 @@ def get_ancestors(graph, idx):
         is_ancestor[new_ancestor] = True
         queue.update(set(new_ancestor.tolist()))
     is_ancestor[idx] = False
-    return np.where(is_ancestor)[0]
+    return np.where(is_ancestor)[0]  # np.where(is_ancestor)返回元素值为True的索引位置，没有True则返回0
 
 def infer_instseg(model, image, category, bboxes, new_bboxes, input_size, th, rgb=None):
     num = bboxes.shape[0]
@@ -412,7 +413,7 @@ def infer_amodal(model, image, inmodal, category, bboxes, order_matrix,
             ancestors = get_ancestors(order_matrix, i)
         else:
             ancestors = get_neighbors(order_matrix, i)
-        image_patch = utils.crop_padding(image, bboxes[i], pad_value=(0,0,0))
+        image_patch = utils.crop_padding(image, bboxes[i], pad_value=(0,0,0)) # 用框把图抠出来
         inmodal_patch = utils.crop_padding(inmodal[i], bboxes[i], pad_value=(0,))
         if input_size is not None: # always
             newsize = input_size
@@ -421,17 +422,17 @@ def infer_amodal(model, image, inmodal, category, bboxes, order_matrix,
         else:
             newsize = None
         if newsize is not None:
-            inmodal_patch = resize_mask(inmodal_patch, newsize, interp)
+            inmodal_patch = resize_mask(inmodal_patch, newsize, interp)  # 把抠出来的图变形为指定大小，这里是（256,256） inmodal_patch是5的掩码
 
-        eraser = (inmodal[ancestors,...].sum(axis=0) > 0).astype(np.uint8) # union
-        eraser = utils.crop_padding(eraser, bboxes[i], pad_value=(0,))
+        eraser = (inmodal[ancestors,...].sum(axis=0) > 0).astype(np.uint8)  # 把关联的遮挡对象整合到一起 union
+        eraser = utils.crop_padding(eraser, bboxes[i], pad_value=(0,))  # 拆剪
         if newsize is not None:
-            eraser = resize_mask(eraser, newsize, interp)
+            eraser = resize_mask(eraser, newsize, interp)  # 变形成（256,256）eraser是包含0,2,3,4的掩码
         if dilate_kernel > 0:
             eraser = cv2.dilate(eraser, np.ones((dilate_kernel, dilate_kernel), np.uint8),
                                 iterations=1)
         # erase inmodal
-        inmodal_patch[eraser == 1] = 0
+        inmodal_patch[eraser == 1] = 0  # 擦除属于0,2,3,4的部分
         # gather
         inmodal_patches.append(inmodal_patch)
         eraser_patches.append(eraser)

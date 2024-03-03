@@ -108,7 +108,7 @@ def gather_tensors_batch(input_array, part_size=10):
 
 def reduce_tensors(tensor):
     reduced_tensor = tensor.clone()
-    dist.all_reduce(reduced_tensor)
+    dist.all_reduce(reduced_tensor)  # 用于将多个进程中的梯度相加，我这里线程只有1个所以相当于什么也没做
     return reduced_tensor
 
 class DistributedSequentialSampler(Sampler):
@@ -196,7 +196,7 @@ class DistributedGivenIterationSampler(Sampler):
     def __iter__(self):
         if self.call == 0:
             self.call = 1
-            return iter(self.indices[(self.last_iter+1)*self.batch_size:])
+            return iter(self.indices[(self.last_iter+1)*self.batch_size:])  # 56000*4  self.indices[224000:]
         else:
             raise RuntimeError("this sampler is not designed to be called more than once!!")
 
@@ -206,15 +206,15 @@ class DistributedGivenIterationSampler(Sampler):
         np.random.seed(0)
 
         all_size = self.total_size * self.world_size
-        indices = np.arange(len(self.dataset))
-        indices = indices[:all_size]
-        num_repeat = (all_size-1) // indices.shape[0] + 1
-        indices = np.tile(indices, num_repeat)
-        indices = indices[:all_size]
+        indices = np.arange(len(self.dataset))  # 创建从0到22163的数组：（22163,1）
+        indices = indices[:all_size]  # 获取从0到240000的部分，不够则获取全部
+        num_repeat = (all_size-1) // indices.shape[0] + 1  # 整数除法（//）即需要用indices几次，这里算上是11次
+        indices = np.tile(indices, num_repeat)  # 返回一个长度为22163*11的数组：（243793,1）,内容为[0,1,2...22162,0,1,2...,22162...]
+        indices = indices[:all_size]  # 截取240000个：（240000,1）
 
-        np.random.shuffle(indices)
+        np.random.shuffle(indices)  # 打乱顺序 ,[829,16816,...]
         beg = self.total_size * self.rank
-        indices = indices[beg:beg+self.total_size]
+        indices = indices[beg:beg+self.total_size]  # 如果是分布式训练，这里是将整个数组分成X份，给到X个服务端
 
         assert len(indices) == self.total_size
 

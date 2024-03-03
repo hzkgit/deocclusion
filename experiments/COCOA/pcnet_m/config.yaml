@@ -1,6 +1,6 @@
 model:
     algo: PartialCompletionMask
-    total_iter: 56000
+    total_iter: 60000
     lr_steps: [32000, 48000]
     lr_mults: [0.1, 0.1]
     lr: 0.001
@@ -37,12 +37,12 @@ data:
         shift: [-0.2, 0.2]
         scale: [0.8, 1.2]
     load_rgb: False
-    batch_size: 32
-    batch_size_val: 32
-    workers: 2
+    batch_size: 4
+    batch_size_val: 4
+    workers: 0
 
 trainer:
-    initial_val: True
+    initial_val: False
     val_freq: 2000
     val_iter: 10
     val_disp_start_iter: 0

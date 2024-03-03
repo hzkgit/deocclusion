@@ -7,8 +7,13 @@ import utils
 import inference as infer
 from . import SingleStageModel
 from . import MaskWeightedCrossEntropyLoss
+import torchvision.utils as vutils
+
+from PIL import Image
+import matplotlib.pyplot as plt
 
 import pdb
+
 
 class PartialCompletionMask(SingleStageModel):
 
@@ -73,7 +78,7 @@ class PartialCompletionMask(SingleStageModel):
                 inmodal, bboxes, order_matrix,
                 order_grounded=self.params['inference']['order_grounded']))
         elif amodal_method == 'raw':
-            amodal_pred = inmodal # evaluate raw
+            amodal_pred = inmodal  # evaluate raw
         else:
             raise Exception("No such method: {}".format(amodal_method))
 
@@ -93,13 +98,14 @@ class PartialCompletionMask(SingleStageModel):
                 output = nn.functional.interpolate(
                     output, size=self.mask.shape[2:4],
                     mode="bilinear", align_corners=True)
-        comp = output.argmax(dim=1, keepdim=True).float()
-        comp[self.eraser == 0] = (self.mask > 0).float()[self.eraser == 0]
+        comp = output.argmax(dim=1, keepdim=True).float()  # # output:(4,2,256,256)=>(4,1,256,256)
+        comp[self.eraser == 0] = (self.mask > 0).float()[
+            self.eraser == 0]  # comp[self.eraser == 0]获取comp中eraser中所有为True的像素位置
 
         vis_combo = (self.mask > 0).float()
-        vis_combo[self.eraser == 1] = 0.5
+        vis_combo[self.eraser == 1] = 0.5  # 将模态掩码图中与遮挡物像素为1的点的相同位置的像素设为0.5（灰度化）便于查看
         vis_target = self.target.cpu().clone().float()
-        if vis_target.max().item() == 255:
+        if vis_target.max().item() == 255:  # 这里没过
             vis_target[vis_target == 255] = 0.5
         vis_target = vis_target.unsqueeze(1)
         if self.use_rgb:
@@ -107,19 +113,78 @@ class PartialCompletionMask(SingleStageModel):
         else:
             cm_tensors = []
         ret_tensors = {'common_tensors': cm_tensors,
-                       'mask_tensors': [self.mask, vis_combo, comp, vis_target]}
+                       'mask_tensors': [self.mask, vis_combo, comp,
+                                        vis_target]}  # mask:模态掩码 vis_combo:遮挡对象置灰（便于观察） comp:预测结果 vis_target：目标
         if ret_loss:
-            loss = self.criterion(output, self.target, self.eraser.squeeze(1)) / self.world_size
+            loss = self.criterion(output, self.target, self.eraser.squeeze(1)) / self.world_size  # 求损失值
             return ret_tensors, {'loss': loss}
         else:
             return ret_tensors
 
     def step(self):
+
+        test = torch.cat([self.mask, self.eraser], dim=1)
+        tt1 = test[:, 0, :, :].unsqueeze(1).repeat(1, 3, 1, 1)
+        tt2 = test[:, 1, :, :].unsqueeze(1).repeat(1, 3, 1, 1)
+        test2 = torch.cat((tt1, tt2), dim=0)
+        grid2 = vutils.make_grid(test2,
+                                nrow=4,
+                                normalize=True,
+                                range=(0, 255),
+                                scale_each=False)
+
+        img_pil2 = Image.fromarray(np.uint8(grid2.cpu().permute(1, 2, 0) * 255))  # (3, 518, 518)
+        plt.imshow(img_pil2)
+        plt.show()
+
         if self.use_rgb:
             output = self.model(torch.cat([self.mask, self.eraser], dim=1), self.rgb)
         else:
             output = self.model(torch.cat([self.mask, self.eraser], dim=1))
-        loss = self.criterion(output, self.target, self.eraser.squeeze(1)) / self.world_size
+
+        # # 输出结果可视化
+        # for i in range(4):
+        #     outputTemp = output.cpu().detach().numpy()
+        #     temp = outputTemp[i][0]
+        #     img_pil = Image.fromarray(np.uint8(temp))
+        #     plt.imshow(img_pil)
+        #     plt.show()
+        #
+        #     temp = outputTemp[i][1]
+        #     img_pil = Image.fromarray(np.uint8(temp))
+        #     plt.imshow(img_pil)
+        #     plt.show()
+
+        # temp = nn.functional.normalize(output, p=2, dim=None)  # (4,2,256,256)
+        # temp = torch.clamp(temp, min=0, max=1)
+
+        temp_1 = output.argmax(dim=1, keepdim=True).cpu().detach().numpy()
+        temp_2 = output.cpu().detach().numpy()
+
+        comp = output.argmax(dim=1, keepdim=True).float()  # (4,2,256,256)=>(4,1,256,256)
+        comp[self.eraser == 0] = (self.mask > 0).float()[self.eraser == 0]
+
+        # output:(4,2,256,256)
+        t1 = output[:, 0, :, :].unsqueeze(1).repeat(1, 3, 1, 1)
+        t2 = output[:, 1, :, :].unsqueeze(1).repeat(1, 3, 1, 1)
+        t3 = self.target.unsqueeze(1).repeat(1, 3, 1, 1)
+        t4 = self.eraser.repeat(1, 3, 1, 1)
+        t5 = comp.repeat(1, 3, 1, 1)
+
+        images_tensor = torch.cat((t1, t2, t3, t4, t5), dim=0)
+
+        grid = vutils.make_grid(images_tensor,
+                                nrow=4,
+                                normalize=True,
+                                range=(0, 255),
+                                scale_each=True)
+
+        # vutils.save_image(grid, 'grid_image.png')
+        img_pil = Image.fromarray(np.uint8(grid.cpu().permute(1, 2, 0) * 255))  # (3, 518, 518)
+        plt.imshow(img_pil)
+        plt.show()
+
+        loss = self.criterion(output, self.target, self.eraser.squeeze(1)) / self.world_size  # 这一步出现了问题
         self.optim.zero_grad()
         loss.backward()
         utils.average_gradients(self.model)

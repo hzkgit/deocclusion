@@ -1,5 +1,10 @@
+import copy
+
 import torch
 import torch.nn as nn
+from PIL import Image
+import matplotlib.pyplot as plt
+import numpy as np
 
 class AdversarialLoss(nn.Module):
     r"""
@@ -64,23 +69,26 @@ class MaskWeightedCrossEntropyLoss(nn.Module):
 
     def forward(self, predict, target, mask):
         '''
-        predict: NCHW
-        target: NHW
-        mask: NHW
+        predict: NCHW,(4,2,256,256)
+        target: NHW,(4,256,256)
+        mask: NHW,(4,256,256)
         '''
         n, c, h, w = predict.size()
-        mask = mask.byte()
-        target_inmask = target[mask]
-        target_outmask = target[~mask]
-        predict = predict.transpose(1, 2).transpose(2, 3).contiguous()
 
-        predict_inmask = predict[mask.view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)
-        predict_outmask = predict[(~mask).view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)
-        loss_inmask = nn.functional.cross_entropy(
-            predict_inmask, target_inmask, size_average=False)
-        loss_outmask = nn.functional.cross_entropy(
-            predict_outmask, target_outmask, size_average=False)
-        loss = (self.inmask_weight * loss_inmask + self.outmask_weight * loss_outmask) / (n * h * w)
+        mask = mask.byte()  # .byte()方法被用来将数组中的元素转换为8位无符号整型，即字节型(uint8)数据类型
+        target_inmask = target[mask]  # 若mask对应位置元素>0则target对应位置元素保留，否则target对应位置元素去掉（提取mask对应位置像素）(4,256,256)=>(26972,)
+        target_outmask = target[~mask]  # ~用作取反操作符,保留target所有位置元素 (4,256,256)=>(262144,)
+        # temp = copy.deepcopy(predict.cpu().detach())
+        predict = predict.transpose(1, 2).transpose(2, 3).contiguous()  # (4,2,256,256)=>(4,256,256,2) (n,c,h,w)=>(n,h,w,c)  2个 256*256矩阵a和b 变成256个 256*2的矩阵 第一个矩阵为(a1:b1,a2:b2...,a256,b256)
+        # 每一组predict、target、erase都用俩种覆盖方式（第一种：erase盖在modal上；第二种：predict盖在erase上）
+        # 然后L1和L2做交叉熵
+        predict_inmask = predict[mask.view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)  # (4,256,256)=>(4,256,256,1)=>(4,256,256,2)(提取mask对应位置像素)=>(53944,)=>(26972,2)
+        predict_outmask = predict[(~mask).view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)  # (4,256,256)=>(4,256,256,1)=>(4,256,256,2)=>(524288,)=>(262144,2)
+        loss_inmask = nn.functional.cross_entropy(  # L1
+            predict_inmask, target_inmask.long(), size_average=False)  # size_average是否计算损失值的平均
+        loss_outmask = nn.functional.cross_entropy(  # L2
+            predict_outmask, target_outmask.long(), size_average=False)
+        loss = (self.inmask_weight * loss_inmask + self.outmask_weight * loss_outmask) / (n * h * w)  # （5*L1损失值+1*L2损失值）/4*256*256
         return loss
 
 

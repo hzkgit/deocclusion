@@ -7,11 +7,12 @@ class _LRScheduler(object):
             raise TypeError('{} is not an Optimizer'.format(
                 type(optimizer).__name__))
         self.optimizer = optimizer
-        if last_iter == -1:
+        if last_iter == -1:  # 不过这里
             for group in optimizer.param_groups:
                 group.setdefault('initial_lr', group['lr'])
         else:
             for i, group in enumerate(optimizer.param_groups):
+                group.setdefault('initial_lr', group['lr'])  # 这一行是我自己加的，原版没有
                 if 'initial_lr' not in group:
                     raise KeyError("param 'initial_lr' is not specified "
                                    "in param_groups[{}] when resuming an optimizer".format(i))

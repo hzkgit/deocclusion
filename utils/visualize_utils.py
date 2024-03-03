@@ -2,6 +2,7 @@ import numpy as np
 
 import torch
 
+
 def visualize_tensor(tensors_dict, mean, div):
     together = []
     for ct in tensors_dict['common_tensors']:
@@ -11,17 +12,18 @@ def visualize_tensor(tensors_dict, mean, div):
         together.append(ct)
     for mt in tensors_dict['mask_tensors']:
         if mt.size(1) == 1:
-            mt = mt.repeat(1,3,1,1)
-        mt = mt.float().detach().cpu() * 255
+            mt = mt.repeat(1, 3, 1, 1)  # (4,1,256,256)=>变成(4,3,256,256)
+        mt = mt.float().detach().cpu() * 255  # 1*255变成全白，0*255还是全黑
         together.append(mt)
     if len(together) == 0:
         return None
     together = torch.cat(together, dim=3)
-    together = together.permute(1,0,2,3).contiguous()
+    together = together.permute(1, 0, 2, 3).contiguous()
     together = together.view(together.size(0), -1, together.size(3))
     return together
 
+
 def unormalize(tensor, mean, div):
     for c, (m, d) in enumerate(zip(mean, div)):
-        tensor[:,c,:,:].mul_(d).add_(m)
+        tensor[:, c, :, :].mul_(d).add_(m)
     return tensor

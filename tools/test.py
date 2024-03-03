@@ -7,6 +7,13 @@ from PIL import Image
 import pycocotools.mask as maskUtils
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+
+os.environ['HOME'] = "F:\ML\deocclusion\demos"
+os.environ['RANK'] = '0'
+os.environ['WORLD_SIZE'] = '1'
+os.environ['MASTER_ADDR'] = 'localhost'
+os.environ['MASTER_PORT'] = '35632'
+
 import sys
 sys.path.append('.')
 from datasets import reader
